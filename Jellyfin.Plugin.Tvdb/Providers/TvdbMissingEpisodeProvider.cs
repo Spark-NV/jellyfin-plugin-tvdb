@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Events;
@@ -70,6 +73,8 @@ namespace Jellyfin.Plugin.Tvdb.Providers
         private static bool IncludeMissingSpecials => TvdbPlugin.Instance?.Configuration.IncludeMissingSpecials ?? false;
 
         private static bool RemoveAllMissingEpisodesOnRefresh => TvdbPlugin.Instance?.Configuration.RemoveAllMissingEpisodesOnRefresh ?? false;
+
+        private static bool CreateStubFilesForMissingEpisodes => TvdbPlugin.Instance?.Configuration.CreateStubFilesForMissingEpisodes ?? true;
 
         private static bool EpisodeExists(EpisodeBaseRecord episodeRecord, IReadOnlyList<Episode> existingEpisodes)
         {
@@ -167,6 +172,13 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                 .Select(ep => ep.SeasonNumber!.Value)
                 .Distinct()
                 .ToList();
+
+            // Create stub files for all missing episodes BEFORE creating virtual items
+            // This ensures all files exist before metadata refresh
+            if (CreateStubFilesForMissingEpisodes && !string.IsNullOrEmpty(series.Path))
+            {
+                await CreateStubFilesForAllEpisodesAsync(series, allEpisodes, existingSeasons, allSeasons, CancellationToken.None).ConfigureAwait(false);
+            }
 
             // Add missing seasons
             var newSeasons = AddMissingSeasons(series, existingSeasons, allSeasons);
@@ -446,6 +458,18 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                 return;
             }
 
+            // Try to find the stub file path that was created earlier
+            string? stubFilePath = null;
+            if (CreateStubFilesForMissingEpisodes && !string.IsNullOrEmpty(season.Series.Path))
+            {
+                stubFilePath = GetStubFilePath(episode, season);
+                // Verify the file actually exists (might not if stub creation failed)
+                if (!string.IsNullOrEmpty(stubFilePath) && !File.Exists(stubFilePath))
+                {
+                    stubFilePath = null;
+                }
+            }
+
             // Put as much metadata into it as possible
             var newEpisode = new Episode
             {
@@ -455,7 +479,8 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                 Id = _libraryManager.GetNewItemId(
                     $"{season.Series.Id}{episode.SeasonNumber}Episode {episode.Number}",
                     typeof(Episode)),
-                IsVirtualItem = true,
+                IsVirtualItem = string.IsNullOrEmpty(stubFilePath), // Only virtual if no stub file exists
+                Path = stubFilePath,
                 SeasonId = season.Id,
                 SeriesId = season.Series.Id,
                 Overview = episode.Overview,
@@ -482,13 +507,207 @@ namespace Jellyfin.Plugin.Tvdb.Providers
             newEpisode.SetTvdbId(episode.Id);
 
             _logger.LogDebug(
-                "Creating virtual episode {SeriesName} S{Season:00}E{Episode:00}",
+                "Creating {Type} episode {SeriesName} S{Season:00}E{Episode:00}",
+                newEpisode.IsVirtualItem ? "virtual" : "stub file",
                 season.Series.Name,
                 episode.SeasonNumber,
                 episode.Number);
 
             season.AddChild(newEpisode);
             _providerManager.QueueRefresh(newEpisode.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.High);
+        }
+
+        /// <summary>
+        /// Creates stub files for all missing episodes in a series.
+        /// This is called BEFORE creating virtual episodes to ensure all files exist.
+        /// </summary>
+        /// <param name="series">The series to create stub files for.</param>
+        /// <param name="allEpisodes">All episodes from TVDB.</param>
+        /// <param name="existingSeasons">Existing seasons in the series.</param>
+        /// <param name="allSeasons">All season numbers from TVDB.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private async Task CreateStubFilesForAllEpisodesAsync(
+            Series series,
+            IReadOnlyList<EpisodeBaseRecord> allEpisodes,
+            IReadOnlyList<Season> existingSeasons,
+            IReadOnlyList<int> allSeasons,
+            CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Creating stub files for all missing episodes in series {SeriesName}", series.Name);
+
+            // Process each season
+            foreach (var seasonNumber in allSeasons)
+            {
+                var seasonEpisodes = allEpisodes
+                    .Where(e => e.SeasonNumber == seasonNumber && e.Number.HasValue)
+                    .ToList();
+
+                // Get existing season or create temp season info for path calculation
+                var existingSeason = existingSeasons.FirstOrDefault(s => s.IndexNumber == seasonNumber);
+
+                // Get existing episodes in this season to check what files already exist
+                var existingEpisodeFiles = new HashSet<string>();
+                if (existingSeason != null)
+                {
+                    foreach (var existingEpisode in existingSeason.GetEpisodes().OfType<Episode>())
+                    {
+                        if (!string.IsNullOrEmpty(existingEpisode.Path) && File.Exists(existingEpisode.Path))
+                        {
+                            existingEpisodeFiles.Add(existingEpisode.Path);
+                        }
+                    }
+                }
+
+                // Create season directory name
+                string seasonDirName;
+                if (seasonNumber == 0)
+                {
+                    var libraryOptions = _libraryManager.GetLibraryOptions(series);
+                    seasonDirName = libraryOptions.SeasonZeroDisplayName ?? "Specials";
+                }
+                else
+                {
+                    seasonDirName = string.Format(CultureInfo.InvariantCulture, _localization.GetLocalizedString("NameSeasonNumber"), seasonNumber.ToString(CultureInfo.InvariantCulture));
+                }
+
+                var seasonPath = Path.Combine(series.Path, seasonDirName);
+
+                // Create season directory if it doesn't exist
+                try
+                {
+                    await Task.Run(() => Directory.CreateDirectory(seasonPath), cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to create season directory: {SeasonPath}", seasonPath);
+                    continue;
+                }
+
+                // Create stub files for missing episodes
+                foreach (var episodeRecord in seasonEpisodes)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!episodeRecord.Number.HasValue)
+                    {
+                        continue;
+                    }
+
+                    var episodeNumber = episodeRecord.Number.Value;
+                    var episodeName = episodeRecord.Name ?? "Episode";
+                    var sanitizedEpisodeName = SanitizeFileName(episodeName);
+                    var fileName = $"S{seasonNumber:D2}E{episodeNumber:D2} - {sanitizedEpisodeName}.mp4";
+                    var filePath = Path.Combine(seasonPath, fileName);
+
+                    // Skip if file already exists and is a real file (> 1KB)
+                    if (File.Exists(filePath))
+                    {
+                        var fileInfo = new FileInfo(filePath);
+                        if (fileInfo.Length > 1024)
+                        {
+                            continue; // Real file exists, skip
+                        }
+                    }
+
+                    // Skip if we already know about this file from existing episodes
+                    if (existingEpisodeFiles.Contains(filePath))
+                    {
+                        continue;
+                    }
+
+                    // Create stub file
+                    try
+                    {
+                        var stubContent = new byte[1024];
+                        Array.Clear(stubContent, 0, stubContent.Length);
+                        await File.WriteAllBytesAsync(filePath, stubContent, cancellationToken).ConfigureAwait(false);
+                        _logger.LogDebug("Created stub file: {FilePath}", filePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to create stub file: {FilePath}", filePath);
+                    }
+                }
+            }
+
+            _logger.LogDebug("Finished creating stub files for series {SeriesName}", series.Name);
+        }
+
+        /// <summary>
+        /// Gets the expected stub file path for an episode without creating it.
+        /// </summary>
+        /// <param name="episodeRecord">The episode record from TVDB.</param>
+        /// <param name="season">The season containing the episode.</param>
+        /// <returns>The expected file path, or null if it cannot be determined.</returns>
+        private string? GetStubFilePath(EpisodeBaseRecord episodeRecord, Season season)
+        {
+            var series = season.Series;
+            if (series == null || string.IsNullOrEmpty(series.Path) || !episodeRecord.Number.HasValue || !episodeRecord.SeasonNumber.HasValue)
+            {
+                return null;
+            }
+
+            var seasonNumber = episodeRecord.SeasonNumber.Value;
+            var episodeNumber = episodeRecord.Number.Value;
+
+            // Create season directory name
+            string seasonDirName;
+            if (seasonNumber == 0)
+            {
+                var libraryOptions = _libraryManager.GetLibraryOptions(series);
+                seasonDirName = libraryOptions.SeasonZeroDisplayName ?? "Specials";
+            }
+            else
+            {
+                seasonDirName = string.Format(CultureInfo.InvariantCulture, _localization.GetLocalizedString("NameSeasonNumber"), seasonNumber.ToString(CultureInfo.InvariantCulture));
+            }
+
+            var episodeName = episodeRecord.Name ?? "Episode";
+            var sanitizedEpisodeName = SanitizeFileName(episodeName);
+            var fileName = $"S{seasonNumber:D2}E{episodeNumber:D2} - {sanitizedEpisodeName}.mp4";
+            var filePath = Path.Combine(series.Path, seasonDirName, fileName);
+
+            return filePath;
+        }
+
+        /// <summary>
+        /// Sanitizes a file name by removing invalid characters.
+        /// </summary>
+        /// <param name="fileName">The file name to sanitize.</param>
+        /// <returns>The sanitized file name.</returns>
+        private static string SanitizeFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return "Episode";
+            }
+
+            // Remove invalid file system characters
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = new StringBuilder(fileName.Length);
+
+            foreach (var c in fileName)
+            {
+                if (!invalidChars.Contains(c))
+                {
+                    sanitized.Append(c);
+                }
+                else
+                {
+                    sanitized.Append('_');
+                }
+            }
+
+            // Remove any trailing periods or spaces (Windows limitation)
+            var result = sanitized.ToString().TrimEnd('.', ' ');
+
+            // Ensure the name is not empty after sanitization
+            if (string.IsNullOrWhiteSpace(result))
+            {
+                return "Episode";
+            }
+
+            return result;
         }
 
         /// <inheritdoc />

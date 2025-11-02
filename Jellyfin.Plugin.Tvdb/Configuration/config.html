@@ -65,6 +65,10 @@
                         <input is="emby-checkbox" type="checkbox" id="removeAllMissingEpisodesOnRefresh" />
                         <span>Remove All Missing Episodes On Refresh</span>
                     </label>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="createStubFilesForMissingEpisodes" />
+                        <span>Create stub files for missing episodes</span>
+                    </label>
                     <div class="sectionTitleContainer flex align-items-center">
                         <h2 class="sectionTitle">Check for Metadata Updates Scheduled Task Settings:</h2>
                     </div>
@@ -123,6 +127,7 @@
                     // Missing Episode Provider Settings
                     document.getElementById('includeMissingSpecials').checked = config.IncludeMissingSpecials;
                     document.getElementById('removeAllMissingEpisodesOnRefresh').checked = config.RemoveAllMissingEpisodesOnRefresh;
+                    document.getElementById('createStubFilesForMissingEpisodes').checked = config.CreateStubFilesForMissingEpisodes;
 
                     // Check for Metadata Updates Scheduled Task Settings
                     document.getElementById('metadataUpdateInHours').value = config.MetadataUpdateInHours;
@@ -150,6 +155,7 @@
                     // Missing Episode Provider Settings
                     config.IncludeMissingSpecials = document.getElementById('includeMissingSpecials').checked;
                     config.RemoveAllMissingEpisodesOnRefresh = document.getElementById('removeAllMissingEpisodesOnRefresh').checked;
+                    config.CreateStubFilesForMissingEpisodes = document.getElementById('createStubFilesForMissingEpisodes').checked;
 
                     //Check for Metadata Updates Scheduled Task Settings
                     config.MetadataUpdateInHours = document.getElementById('metadataUpdateInHours').value;

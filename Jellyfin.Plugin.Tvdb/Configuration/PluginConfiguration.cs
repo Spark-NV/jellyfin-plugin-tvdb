@@ -67,6 +67,11 @@ namespace Jellyfin.Plugin.Tvdb.Configuration
         public bool RemoveAllMissingEpisodesOnRefresh { get; set; } = false;
 
         /// <summary>
+        /// Gets or sets a value indicating whether to create stub files for missing episodes.
+        /// </summary>
+        public bool CreateStubFilesForMissingEpisodes { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a value indicating whether to include original country in tags.
         /// </summary>
         public bool IncludeOriginalCountryInTags { get; set; } = false;
