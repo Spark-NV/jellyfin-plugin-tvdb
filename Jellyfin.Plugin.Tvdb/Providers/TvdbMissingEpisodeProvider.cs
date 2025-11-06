@@ -518,6 +518,79 @@ namespace Jellyfin.Plugin.Tvdb.Providers
         }
 
         /// <summary>
+        /// Gets the stub file path to use for copying episodes.
+        /// First tries the configured path, then falls back to default locations.
+        /// </summary>
+        /// <returns>The stub file path, or null if not found.</returns>
+        private string? GetEpisodeStubFilePath()
+        {
+            var config = TvdbPlugin.Instance?.Configuration;
+            if (config == null)
+            {
+                return null;
+            }
+
+            string? stubPath = null;
+
+            // First, try user-configured path
+            if (!string.IsNullOrEmpty(config.EpisodeStubFilePath))
+            {
+                if (File.Exists(config.EpisodeStubFilePath))
+                {
+                    stubPath = config.EpisodeStubFilePath;
+                    _logger.LogDebug("Using configured episode stub file: {Path}", stubPath);
+                }
+                else
+                {
+                    _logger.LogWarning("Configured episode stub file not found: {Path}", config.EpisodeStubFilePath);
+                }
+            }
+
+            // Fallback to default locations if not configured or not found
+            if (stubPath == null)
+            {
+                var pluginPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+
+                if (pluginPath != null)
+                {
+                    // Try plugin directory
+                    var path1 = Path.Combine(pluginPath, "episode_stub.mp4");
+                    if (File.Exists(path1))
+                    {
+                        stubPath = path1;
+                    }
+                    else
+                    {
+                        // Try project root relative to plugin
+                        var path2 = Path.Combine(pluginPath, "..", "..", "..", "..", "episode_stub.mp4");
+                        path2 = Path.GetFullPath(path2);
+                        if (File.Exists(path2))
+                        {
+                            stubPath = path2;
+                        }
+                    }
+                }
+
+                // Try current working directory
+                if (stubPath == null)
+                {
+                    var path3 = Path.Combine(Directory.GetCurrentDirectory(), "episode_stub.mp4");
+                    if (File.Exists(path3))
+                    {
+                        stubPath = path3;
+                    }
+                }
+
+                if (stubPath == null || !File.Exists(stubPath))
+                {
+                    _logger.LogWarning("Episode stub file not found. Searched in plugin directory and current working directory.");
+                }
+            }
+
+            return stubPath;
+        }
+
+        /// <summary>
         /// Creates stub files for all missing episodes in a series.
         /// This is called BEFORE creating virtual episodes to ensure all files exist.
         /// </summary>
@@ -534,6 +607,14 @@ namespace Jellyfin.Plugin.Tvdb.Providers
             CancellationToken cancellationToken)
         {
             _logger.LogDebug("Creating stub files for all missing episodes in series {SeriesName}", series.Name);
+
+            // Get stub file path - use configured path or fallback to default locations
+            var stubFilePath = GetEpisodeStubFilePath();
+            if (stubFilePath == null || !File.Exists(stubFilePath))
+            {
+                _logger.LogWarning("Cannot create stub files: episode stub file not found. Skipping stub file creation for series {SeriesName}", series.Name);
+                return;
+            }
 
             // Process each season
             foreach (var seasonNumber in allSeasons)
@@ -607,6 +688,8 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                         {
                             continue; // Real file exists, skip
                         }
+
+                        // If file exists but is small (<= 1KB), we'll overwrite it with the stub file below
                     }
 
                     // Skip if we already know about this file from existing episodes
@@ -615,17 +698,18 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                         continue;
                     }
 
-                    // Create stub file
+                    // Copy stub file if it exists (will overwrite small stub files if they exist)
                     try
                     {
-                        var stubContent = new byte[1024];
-                        Array.Clear(stubContent, 0, stubContent.Length);
-                        await File.WriteAllBytesAsync(filePath, stubContent, cancellationToken).ConfigureAwait(false);
-                        _logger.LogDebug("Created stub file: {FilePath}", filePath);
+                        if (File.Exists(stubFilePath))
+                        {
+                            await Task.Run(() => File.Copy(stubFilePath, filePath, overwrite: true), cancellationToken).ConfigureAwait(false);
+                            _logger.LogDebug("Copied stub file to: {FilePath}", filePath);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to create stub file: {FilePath}", filePath);
+                        _logger.LogWarning(ex, "Failed to copy stub file to: {FilePath}", filePath);
                     }
                 }
             }

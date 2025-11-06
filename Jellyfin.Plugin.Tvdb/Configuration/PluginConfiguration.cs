@@ -72,6 +72,11 @@ namespace Jellyfin.Plugin.Tvdb.Configuration
         public bool CreateStubFilesForMissingEpisodes { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets the episode stub file path to copy to episode locations.
+        /// </summary>
+        public string EpisodeStubFilePath { get; set; } = string.Empty;
+
+        /// <summary>
         /// Gets or sets a value indicating whether to include original country in tags.
         /// </summary>
         public bool IncludeOriginalCountryInTags { get; set; } = false;
