@@ -12,7 +12,7 @@
                     <div class="sectionTitleContainer flex align-items-center">
                         <h2 class="sectionTitle">TheTVDB Settings:</h2>
                         <a is="emby-button" class="raised button-alt headerHelpButton" target="_blank"
-                           href="https://github.com/jellyfin/jellyfin-plugin-tvdb">${Help}</a>
+                           href="https://github.com/yourusername/jellyfin-plugin-tvdb">${Help}</a>
                     </div>
                     <div class="inputContainer">
                         <label for="txtTvdbSubscriberPIN">TheTvdb Subscriber PIN:</label>
@@ -65,6 +65,10 @@
                         <input is="emby-checkbox" type="checkbox" id="removeAllMissingEpisodesOnRefresh" />
                         <span>Remove All Missing Episodes On Refresh</span>
                     </label>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="createStubFilesForMissingEpisodes" />
+                        <span>Create stub files for missing episodes</span>
+                    </label>
                     <div class="sectionTitleContainer flex align-items-center">
                         <h2 class="sectionTitle">Check for Metadata Updates Scheduled Task Settings:</h2>
                     </div>
@@ -106,7 +110,7 @@
     </div>
     <script type="text/javascript">
         var TvdbPluginConfiguration = {
-            uniquePluginId: "a677c0da-fac5-4cde-941a-7134223f14c8",
+            uniquePluginId: "406f38ec-4d4c-4ccc-847d-1838c3aeea0b",
 
             loadConfiguration: function () {
                 Dashboard.showLoadingMsg();
@@ -119,10 +123,11 @@
                     document.getElementById('importSeasonName').checked = config.ImportSeasonName
                     document.getElementById('fallbackToOriginalLanguage').checked = config.FallbackToOriginalLanguage;
                     document.getElementById('includeOriginalCountryInTags').checked = config.IncludeOriginalCountryInTags;
-                  
+
                     // Missing Episode Provider Settings
                     document.getElementById('includeMissingSpecials').checked = config.IncludeMissingSpecials;
                     document.getElementById('removeAllMissingEpisodesOnRefresh').checked = config.RemoveAllMissingEpisodesOnRefresh;
+                    document.getElementById('createStubFilesForMissingEpisodes').checked = config.CreateStubFilesForMissingEpisodes;
 
                     // Check for Metadata Updates Scheduled Task Settings
                     document.getElementById('metadataUpdateInHours').value = config.MetadataUpdateInHours;
@@ -146,10 +151,11 @@
                     config.ImportSeasonName = document.getElementById('importSeasonName').checked;
                     config.FallbackToOriginalLanguage = document.getElementById('fallbackToOriginalLanguage').checked;
                     config.IncludeOriginalCountryInTags = document.getElementById('includeOriginalCountryInTags').checked;
-                  
+
                     // Missing Episode Provider Settings
                     config.IncludeMissingSpecials = document.getElementById('includeMissingSpecials').checked;
                     config.RemoveAllMissingEpisodesOnRefresh = document.getElementById('removeAllMissingEpisodesOnRefresh').checked;
+                    config.CreateStubFilesForMissingEpisodes = document.getElementById('createStubFilesForMissingEpisodes').checked;
 
                     //Check for Metadata Updates Scheduled Task Settings
                     config.MetadataUpdateInHours = document.getElementById('metadataUpdateInHours').value;

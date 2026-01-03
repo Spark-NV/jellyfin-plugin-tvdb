@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Extensions;
+using Jellyfin.Plugin.Tvdb.Services;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -30,6 +32,7 @@ namespace Jellyfin.Plugin.Tvdb.Providers
         private readonly ILogger<TvdbSeriesProvider> _logger;
         private readonly ILibraryManager _libraryManager;
         private readonly TvdbClientManager _tvdbClientManager;
+        private readonly RuntimeTracker? _runtimeTracker;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TvdbSeriesProvider"/> class.
@@ -44,6 +47,15 @@ namespace Jellyfin.Plugin.Tvdb.Providers
             _logger = logger;
             _libraryManager = libraryManager;
             _tvdbClientManager = tvdbClientManager;
+
+            // Initialize RuntimeTracker if plugin directory is available
+            var pluginPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            if (pluginPath != null)
+            {
+                // Create a logger adapter for RuntimeTracker using the same logger factory
+                // Since we can't access ILoggerFactory directly, we'll pass null and RuntimeTracker will handle it
+                _runtimeTracker = new RuntimeTracker(pluginPath, null);
+            }
         }
 
         /// <inheritdoc />
@@ -499,7 +511,14 @@ namespace Jellyfin.Plugin.Tvdb.Providers
 
             if (tvdbSeries.AverageRuntime is not null)
             {
-                series.RunTimeTicks = TimeSpan.FromMinutes(tvdbSeries.AverageRuntime.Value).Ticks;
+                var averageRuntime = tvdbSeries.AverageRuntime.Value;
+                series.RunTimeTicks = TimeSpan.FromMinutes(averageRuntime).Ticks;
+
+                // Save AverageRuntime to RuntimeTracker for use in stub generation
+                if (tvdbSeries.Id.HasValue)
+                {
+                    _runtimeTracker?.SetSeriesRuntime(tvdbSeries.Id.Value, averageRuntime);
+                }
             }
 
             foreach (var genre in tvdbSeries.Genres)

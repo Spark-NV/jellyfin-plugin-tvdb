@@ -363,16 +363,14 @@ namespace Jellyfin.Plugin.Tvdb.Providers
                 person.ProductionLocations = new[] { tvdbPerson.BirthPlace };
             }
 
-            if (!string.IsNullOrEmpty(tvdbPerson.Birth) &&
-                DateTime.TryParse(tvdbPerson.Birth, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var birthDate))
+            if (DateTime.TryParse(tvdbPerson.Birth, out var date))
             {
-                person.PremiereDate = birthDate.ToUniversalTime();
+                person.PremiereDate = date;
             }
 
-            if (!string.IsNullOrEmpty(tvdbPerson.Death) &&
-                DateTime.TryParse(tvdbPerson.Death, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var deathDate))
+            if (DateTime.TryParse(tvdbPerson.Death, out var deathDate))
             {
-                person.EndDate = deathDate.ToUniversalTime();
+                person.EndDate = deathDate;
             }
         }
 

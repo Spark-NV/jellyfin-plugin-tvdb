@@ -1,3 +1,4 @@
+using System;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.Tvdb.Configuration
@@ -65,6 +66,11 @@ namespace Jellyfin.Plugin.Tvdb.Configuration
         /// Gets or sets a value indicating whether to remove all missing episodes on refresh for Missing Episode Provider.
         /// </summary>
         public bool RemoveAllMissingEpisodesOnRefresh { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to create stub files for missing episodes.
+        /// </summary>
+        public bool CreateStubFilesForMissingEpisodes { get; set; } = true;
 
         /// <summary>
         /// Gets or sets a value indicating whether to include original country in tags.

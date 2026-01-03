@@ -53,7 +53,7 @@ namespace Jellyfin.Plugin.Tvdb
         public override string Name => "TheTVDB";
 
         /// <inheritdoc />
-        public override Guid Id => new Guid("a677c0da-fac5-4cde-941a-7134223f14c8");
+        public override Guid Id => new Guid("406f38ec-4d4c-4ccc-847d-1838c3aeea0b");
 
         /// <inheritdoc />
         public IEnumerable<PluginPageInfo> GetPages()

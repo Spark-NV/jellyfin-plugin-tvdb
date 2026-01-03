@@ -1,10 +1,10 @@
 name: "TheTVDB"
-guid: "a677c0da-fac5-4cde-941a-7134223f14c8"
+guid: "406f38ec-4d4c-4ccc-847d-1838c3aeea0b"
 imageUrl: "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-tvdb.png"
 version: 20
 targetAbi: "10.11.0.0"
 framework: "net9.0"
-owner: "jellyfin"
+owner: "community"
 overview: "Get TV metadata from TheTvdb"
 description: >
   Get TV metadata from TheTvdb

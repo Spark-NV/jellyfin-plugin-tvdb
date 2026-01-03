@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.Tvdb.Providers;
+using Jellyfin.Plugin.Tvdb.Services;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
